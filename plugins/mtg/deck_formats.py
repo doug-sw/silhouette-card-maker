@@ -208,45 +208,6 @@ def parse_scryfall_json(deck_text, handle_card: Callable) -> None:
             print(f'Index: {index}, quantity: {quantity}, set code: {set_code}, collector number: {collector_number}, name: {name}')
             handle_card(index, name, set_code, collector_number, quantity)
 
-# MPCFill XML
-def parse_mpcfill_xml(deck_text, handle_card: Callable) -> None:
-    # We need to convert this into a more usable format for sanity
-    # The back field will only exist if the back of a card exists
-    # {
-    #     "id": "card_id",
-    #     "name": "clean_card_name",
-    #     "quantity": "quantity"
-    #     "back": "back_card_id"
-    # }
-    data = ET.fromstring(deck_text)
-    fronts = data.find("fronts")
-    backs = data.find("backs")
-
-    card_qty = int(data.find("details").find("quantity").text)
-
-    decklist = [None] * card_qty
-    if fronts is None:
-        raise ValueError("No fronts found in decklist")
-
-    for front in fronts.findall("card"):
-        card_id = front.find("id").text
-        name = front.find("name").text.split(".")[:-1][0]
-        slots = front.find("slots").text.split(",")
-        quantity = len(slots)
-        decklist[int(slots[0])] = {"id": card_id, "name": name, "quantity": quantity}
-
-    if backs:
-        for back in backs.findall("card"):
-            card_id = back.find("id").text
-            slots = back.find("slots").text.split(",")
-            decklist[int(slots[0])]["back"] = card_id
-
-    decklist = [x for x in decklist if x]
-
-    for index, item in enumerate(decklist, start=1):
-        print(f"Index: {index}, quantity: {item['quantity']}, name: {item['name']}")
-        handle_card(index, item["id"], item["name"], item.get("back", None), item["quantity"])
-
 class DeckFormat(str, Enum):
     SIMPLE = "simple"
     MTGA = "mtga"

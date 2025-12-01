@@ -3,12 +3,11 @@ import os
 import click
 from deck_formats import DeckFormat, parse_deck
 from scryfall import get_handle_card as scryfall_get_handle_card
-from mpcfill import get_handle_card as mpc_get_handle_card
-
+from mpcfill import MPCFillParser
 from typing import Set
+from pathlib import Path
 
-front_directory = os.path.join('game', 'front')
-double_sided_directory = os.path.join('game', 'double_sided')
+output_directory = Path(__file__).parents[2] / "game"
 
 @click.command()
 @click.argument('deck_path')
@@ -19,7 +18,7 @@ double_sided_directory = os.path.join('game', 'double_sided')
 @click.option('--prefer_showcase', default=False, is_flag=True, show_default=True, help="Prefer fetching cards with showcase treatment")
 @click.option('--prefer_extra_art', default=False, is_flag=True, show_default=True, help="Prefer fetching cards with full art, borderless, or extended art.")
 @click.option('--tokens', default=False, is_flag=True, show_default=True, help="Fetch related tokens when fetching cards")
-
+@click.option('--parallel', default=False, is_flag=True, show_default=True, help="Download images in parallel")
 def cli(
     deck_path: str,
     format: DeckFormat,
@@ -30,17 +29,27 @@ def cli(
 
     prefer_showcase: bool,
     prefer_extra_art: bool,
-    tokens: bool
+    tokens: bool,
+    parallel: bool,
 ):
     if not os.path.isfile(deck_path):
         print(f'{deck_path} is not a valid file.')
         return
+
+    with open(deck_path, 'r') as deck_file:
+        deck_text = deck_file.read()
     
     if format == DeckFormat.MPCFILL_XML:
-        get_handle_card = mpc_get_handle_card(
-            front_directory,
-            double_sided_directory
-        )
+        parser = MPCFillParser()
+        cards = parser.parse(deck_text)
+        import time
+        start = time.perf_counter()
+        if parallel:
+            parser.fetch_cards_parallel(cards, output_directory)
+        else:
+            parser.fetch_cards(cards, output_directory)
+        end = time.perf_counter()
+        print(f'Run time: {end - start}')
     else:
         get_handle_card = scryfall_get_handle_card(
             ignore_set_and_collector_number,
@@ -55,9 +64,6 @@ def cli(
             front_directory,
             double_sided_directory
         )
-
-    with open(deck_path, 'r') as deck_file:
-        deck_text = deck_file.read()
 
         parse_deck(
             deck_text,
