@@ -9,7 +9,7 @@ import traceback
 import enum
 import concurrent.futures
 from dataclasses import dataclass
-
+from typing import Optional
 MPCFILL_REQUEST_URL = "https://script.google.com/macros/s/AKfycbw8laScKBfxda2Wb0g63gkYDBdy8NWNxINoC4xDOwnCQ3JMFdruam1MdmNmN4wI5k4/exec?id="
 
 
@@ -42,16 +42,20 @@ class MPCFillCardImageFetcher:
         status_front = self.download_image(card, CardSide.FRONT, output_dir / "front")
 
         status_back = Status.SUCCESS
-
         if card.id_back:
             status_back = self.download_image(card, CardSide.BACK, output_dir / "double_sided")
 
         return Status.FAIL if Status.FAIL in (status_front, status_back) else Status.SUCCESS
 
-    def _request(self, card_id: str) -> requests.Response:
-        resp = requests.get(self.BASE_URL + card_id, headers=self.HEADERS)
-        resp.raise_for_status()
-        return resp
+    def _request(self, card_id: str, retries: int = 3) -> requests.Response:
+        for attempt in range(retries):
+            try:
+                resp = requests.get(self.BASE_URL + card_id, headers=self.HEADERS)
+                resp.raise_for_status()
+                return resp
+            except requests.RequestException:
+                if attempt == retries - 1:
+                    raise
 
     def download_image(self, card: Card, side: CardSide, output_dir: Path) -> Status:
         if side is CardSide.FRONT:
