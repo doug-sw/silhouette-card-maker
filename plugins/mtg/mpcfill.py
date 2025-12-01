@@ -102,15 +102,15 @@ class MPCFillParser:
                 if status == Status.FAIL:
                     print(f'\tIndex: {index} | Name: {card.name}')
 
-    @staticmethod
-    def fetch_cards(cards: list[Card], output_dir: str | os.PathLike) -> None:
+    @classmethod
+    def fetch_cards(cls, cards: list[Card], output_dir: str | os.PathLike) -> None:
         status = []
         for card in cards:
             status.append(card.fetch(output_dir))
-        MPCFillParser.log_failures(cards, status)
+        cls.log_failures(cards, status)
 
-    @staticmethod
-    def fetch_cards_parallel(cards: list[Card], output_dir: str | os.PathLike, max_workers: int | None = None) -> None:
+    @classmethod
+    def fetch_cards_parallel(cls, cards: list[Card], output_dir: str | os.PathLike, max_workers: int | None = None) -> None:
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_card = {executor.submit(card.fetch, output_dir): card for card in cards}
 
@@ -121,7 +121,7 @@ class MPCFillParser:
                 status[card] = future.result()
             except:
                 print(traceback.format_exc())
-        MPCFillParser.log_failures(status.keys(), status.values())
+        cls.log_failures(status.keys(), status.values())
 
 
 

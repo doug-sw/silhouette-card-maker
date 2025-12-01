@@ -233,7 +233,5 @@ def parse_deck(deck_text: str, format: DeckFormat, handle_card: Callable) -> Non
         parse_moxfield(deck_text, handle_card)
     elif format == DeckFormat.SCRYFALL_JSON:
         parse_scryfall_json(deck_text, handle_card)
-    elif format == DeckFormat.MPCFILL_XML:
-        parse_mpcfill_xml(deck_text, handle_card)
     else:
         raise ValueError("Unrecognized deck format")

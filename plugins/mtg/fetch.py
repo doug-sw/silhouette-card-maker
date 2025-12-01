@@ -18,7 +18,7 @@ output_directory = Path(__file__).parents[2] / "game"
 @click.option('--prefer_showcase', default=False, is_flag=True, show_default=True, help="Prefer fetching cards with showcase treatment")
 @click.option('--prefer_extra_art', default=False, is_flag=True, show_default=True, help="Prefer fetching cards with full art, borderless, or extended art.")
 @click.option('--tokens', default=False, is_flag=True, show_default=True, help="Fetch related tokens when fetching cards")
-@click.option('--parallel', default=False, is_flag=True, show_default=True, help="Download images in parallel")
+@click.option('--parallel', default=False, is_flag=True, show_default=True, help="Download images in parallel (limited to mpcfill_xml).")
 def cli(
     deck_path: str,
     format: DeckFormat,
