@@ -8,7 +8,7 @@ from pathlib import Path
 import traceback
 import enum
 import concurrent.futures
-
+from dataclasses import dataclass
 
 MPCFILL_REQUEST_URL = "https://script.google.com/macros/s/AKfycbw8laScKBfxda2Wb0g63gkYDBdy8NWNxINoC4xDOwnCQ3JMFdruam1MdmNmN4wI5k4/exec?id="
 
@@ -17,43 +17,126 @@ class Status(enum.Enum):
     SUCCESS = enum.auto()
     FAIL = enum.auto()
 
-
+@dataclass
 class Card:
-    def __init__(self, name: str, index: int, id_front: str, id_back: str | None = None, quantity: int = 1):
-        self.name = name
-        self.index = index
-        self.id_front = id_front
-        self.id_back = id_back
-        self.quantity = quantity
+    name: str
+    index: int
+    id_front: str
+    id_back: Optional[str] = None
+    quantity: int = 1
 
-    @staticmethod
-    def _request(card_id: str) -> requests.Response:
-        resp = requests.get(MPCFILL_REQUEST_URL + card_id, headers={"user-agent": "silhouette-card-maker/0.1", "accept": "*/*"})
+class CardSide(enum.Enum):
+    FRONT = enum.auto()
+    BACK = enum.auto()
+
+class MPCFillCardImageFetcher:
+    BASE_URL = MPCFILL_REQUEST_URL
+    HEADERS = {
+        "user-agent": "silhouette-card-maker/0.1",
+        "accept": "*/*"
+    }
+
+    def fetch_card(self, card: Card, output_dir: Path) -> Status:
+        output_dir = Path(output_dir)
+
+        status_front = self.download_image(card, CardSide.FRONT, output_dir / "front")
+
+        status_back = Status.SUCCESS
+
+        if card.id_back:
+            status_back = self.download_image(card, CardSide.BACK, output_dir / "double_sided")
+
+        return Status.FAIL if Status.FAIL in (status_front, status_back) else Status.SUCCESS
+
+    def _request(self, card_id: str) -> requests.Response:
+        resp = requests.get(self.BASE_URL + card_id, headers=self.HEADERS)
         resp.raise_for_status()
         return resp
 
-    def download_image(self, card_id: str, output_dir: str | os.PathLike) -> Status:
-        print(f'{self.index} download started.')
-        resp = Card._request(card_id)
-        print(f'{self.index} download completed.')
-        if resp.content is None:
-            return status.FAIL
-        image = b64decode(resp.content)
-        file_ext = guess_extension(image)
-        card_name = remove_nonalphanumeric(self.name)
-        for counter in range(1, self.quantity+1):
-            image_filename = f'{self.index}{card_name}{counter}.{file_ext}'
-            image_filepath = Path(output_dir) / image_filename
-            with open(image_filepath, 'wb') as file:
-                file.write(image)
+    def download_image(self, card: Card, side: CardSide, output_dir: Path) -> Status:
+        if side is CardSide.FRONT:
+            card_id = card.id_front
+        elif side is CardSide.BACK:
+            if not card.id_back:
+                return Status.SUCCESS
+            card_id = card.id_back
+        else:
+            raise ValueError(f"Unhandled card side {side}")
+
+        print(f"{card.index} download ({side.name.lower()}) started.")
+
+        try:
+            resp = self._request(card_id)
+        except requests.RequestException:
+            return Status.FAIL
+
+        if not resp.content:
+            return Status.FAIL
+
+        try:
+            image_bytes = b64decode(resp.content)
+        except Exception:
+            return Status.FAIL
+
+        file_ext = guess_extension(image_bytes)
+        if not file_ext:
+            return Status.FAIL
+
+        safe_name = remove_nonalphanumeric(card.name)
+        for counter in range(1, card.quantity + 1):
+            filename = f'{card.index}{safe_name}{counter}.{file_ext}'
+            filepath = Path(output_dir) / filename
+            filepath.write_bytes(image_bytes)
+
         return Status.SUCCESS
 
-    def fetch(self, output_dir: str | os.PathLike) -> Status:
-        status = [Status.SUCCESS, Status.SUCCESS]
-        status[0] = self.download_image(self.id_front, Path(output_dir) / "front")
-        if self.id_back:
-            status[1] = self.download_image(self.id_back, Path(output_dir) / "double_sided")
-        return Status.FAIL if Status.FAIL in status else Status.SUCCESS
+    @staticmethod
+    def log_failures(cards: list[Card], status: list[Status]) -> None:
+        success_count = sum(s is Status.SUCCESS for s in status)
+        fail_count = sum(s is Status.FAIL for s in status)
+
+        print(f'Succesfully downloaded {success_count}/{len(cards)} images.') # TODO: Proper logger
+        print(f'Failed to download {fail_count}/{len(cards)} images.') # TODO: Proper logger
+
+        if fail_count:
+            print(f'Failed to download: ')
+            for index, (card, status) in enumerate(zip(cards, status)):
+                if status == Status.FAIL:
+                    print(f'\tIndex: {index} | Name: {card.name}')
+
+    @classmethod
+    def fetch_cards(cls, cards: list[Card], output_dir: str | os.PathLike) -> None:
+        output_dir = Path(output_dir)
+
+        status = []
+        fetcher = cls()
+
+        for card in cards:
+            status.append(fetcher.fetch_card(card, output_dir))
+
+        cls.log_failures(cards, status)
+
+    @classmethod
+    def fetch_cards_parallel(cls, cards: list[Card], output_dir: str | os.PathLike, max_workers: int | None = None) -> None:
+
+        output_dir = Path(output_dir)
+        fetcher = cls()
+        results: list[Status] = [Status.FAIL] * len(cards)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {executor.submit(fetcher.fetch_card, card, output_dir): i 
+            for i, card in enumerate(cards)
+        }
+
+        for future in concurrent.futures.as_completed(future_to_index):
+            i = future_to_index[future]
+            try:
+                results[i] = future.result()
+            except Exception:
+                traceback.print_exc()
+                results[i] = Status.FAIL
+
+        cls.log_failures(cards, results)
 
 
 class MPCFillParser:
@@ -89,39 +172,3 @@ class MPCFillParser:
             )
             cards.append(card)
         return cards
-
-    @staticmethod
-    def log_failures(cards: list[Card], status: list[Status]) -> None:
-        success_count = sum(s is Status.SUCCESS for s in status)
-        fail_count = sum(s is Status.FAIL for s in status)
-        print(f'Succesfully downloaded {success_count}/{len(cards)} images.') # TODO: Proper logger
-        print(f'Failed to download {fail_count}/{len(cards)} images.') # TODO: Proper logger
-        if fail_count:
-            print(f'Failed to download: ')
-            for index, (card, status) in enumerate(zip(cards, status)):
-                if status == Status.FAIL:
-                    print(f'\tIndex: {index} | Name: {card.name}')
-
-    @classmethod
-    def fetch_cards(cls, cards: list[Card], output_dir: str | os.PathLike) -> None:
-        status = []
-        for card in cards:
-            status.append(card.fetch(output_dir))
-        cls.log_failures(cards, status)
-
-    @classmethod
-    def fetch_cards_parallel(cls, cards: list[Card], output_dir: str | os.PathLike, max_workers: int | None = None) -> None:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_card = {executor.submit(card.fetch, output_dir): card for card in cards}
-
-        status = {card: Status.FAIL for card in cards}
-        for future in concurrent.futures.as_completed(future_to_card):
-            card = future_to_card[future]
-            try:
-                status[card] = future.result()
-            except:
-                print(traceback.format_exc())
-        cls.log_failures(status.keys(), status.values())
-
-
-

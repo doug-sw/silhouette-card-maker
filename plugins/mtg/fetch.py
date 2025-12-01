@@ -3,9 +3,10 @@ import os
 import click
 from deck_formats import DeckFormat, parse_deck
 from scryfall import get_handle_card as scryfall_get_handle_card
-from mpcfill import MPCFillParser
+from mpcfill import MPCFillParser, MPCFillCardImageFetcher
 from typing import Set
 from pathlib import Path
+import time
 
 output_directory = Path(__file__).parents[2] / "game"
 
@@ -40,14 +41,13 @@ def cli(
         deck_text = deck_file.read()
     
     if format == DeckFormat.MPCFILL_XML:
-        parser = MPCFillParser()
-        cards = parser.parse(deck_text)
-        import time
+        cards = MPCFillParser.parse(deck_text)
         start = time.perf_counter()
+        fetcher = MPCFillCardImageFetcher
         if parallel:
-            parser.fetch_cards_parallel(cards, output_directory)
+            fetcher.fetch_cards_parallel(cards, output_directory)
         else:
-            parser.fetch_cards(cards, output_directory)
+            fetcher.fetch_cards(cards, output_directory)
         end = time.perf_counter()
         print(f'Run time: {end - start}')
     else:
