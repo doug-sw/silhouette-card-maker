@@ -44,7 +44,7 @@ class MPCFillCardImageFetcher:
         status_back = Status.SUCCESS
         if card.id_back:
             status_back = self.download_image(card, CardSide.BACK, output_dir / "double_sided")
-
+            
         return Status.FAIL if Status.FAIL in (status_front, status_back) else Status.SUCCESS
 
     def _request(self, card_id: str, retries: int = 3) -> requests.Response:
@@ -162,7 +162,7 @@ class MPCFillParser:
 
         backs = root.find("backs") or []
         for back in backs:
-            slot = front.find("slots").text.split(",")[0]
+            slot = back.find("slots").text.split(",")[0]
             cards_data[slot].update({'id_back': back.find('id').text})
 
         cards = []
