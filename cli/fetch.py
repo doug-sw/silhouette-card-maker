@@ -1,14 +1,17 @@
 import os
+import time
+from pathlib import Path
+from typing import Set
 
 import click
-from deck_formats import DeckFormat, parse_deck
-from scryfall import get_handle_card as scryfall_get_handle_card
-from mpcfill import MPCFillParser, MPCFillCardImageFetcher
-from typing import Set
-from pathlib import Path
-import time
 
-output_directory = Path(__file__).parents[2] / "game"
+from silhouette_card_maker.models import Card
+from silhouette_card_maker.parsers.mpcfill import MPCFillParser
+from silhouette_card_maker.fetchers.mpcfill import MPCFillCardImageFetcher
+from silhouette_card_maker.formats import DeckFormat
+
+
+BASE_OUTPUT_DIR = Path(__file__).parents[1] / "game"
 
 @click.command()
 @click.argument('deck_path')
@@ -24,52 +27,52 @@ def cli(
     deck_path: str,
     format: DeckFormat,
     ignore_set_and_collector_number: bool,
-
     prefer_older_sets: bool,
     prefer_set: Set[str],
-
     prefer_showcase: bool,
     prefer_extra_art: bool,
     tokens: bool,
     parallel: bool,
 ):
-    if not os.path.isfile(deck_path):
-        print(f'{deck_path} is not a valid file.')
+    deck_path = Path(deck_path)
+    if not deck_path.is_file():
+        print(f"{deck_path} is not a valid file.")
         return
 
-    with open(deck_path, 'r') as deck_file:
-        deck_text = deck_file.read()
-    
+    with deck_path.open("r", encoding="utf-8") as f:
+        deck_text = f.read()
+
+    output_dir = BASE_OUTPUT_DIR
+    front_dir = output_dir / "front"
+    double_sided_dir = output_dir / "double_sided"
+
     if format == DeckFormat.MPCFILL_XML:
-        cards = MPCFillParser.parse(deck_text)
+        parser = MPCFillParser()
+        cards = parser.parse(deck_text)
+
+        fetcher = MPCFillCardImageFetcher()
         start = time.perf_counter()
-        fetcher = MPCFillCardImageFetcher
         if parallel:
-            fetcher.fetch_cards_parallel(cards, output_directory)
+            fetcher.fetch_cards_parallel(cards, output_dir)
         else:
-            fetcher.fetch_cards(cards, output_directory)
+            fetcher.fetch_cards(cards, output_dir)
         end = time.perf_counter()
-        print(f'Run time: {end - start}')
+        print(f"Run time: {end - start:.2f}s")
+
     else:
-        get_handle_card = scryfall_get_handle_card(
-            ignore_set_and_collector_number,
+        raise NotImplementedError("I have a limited number of braincells available.")
+        # get_handle = scryfall_get_handle_card(
+        #     ignore_set_and_collector_number,
+        #     prefer_older_sets,
+        #     prefer_set,
+        #     prefer_showcase,
+        #     prefer_extra_art,
+        #     tokens,
+        #     front_dir,
+        #     double_sided_dir,
+        # )
+        # parse_deck(deck_text, format, get_handle)
 
-            prefer_older_sets,
-            prefer_set,
-            
-            prefer_showcase,
-            prefer_extra_art,
-            tokens,
 
-            front_directory,
-            double_sided_directory
-        )
-
-        parse_deck(
-            deck_text,
-            format,
-            get_handle_card,
-        )
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli()
