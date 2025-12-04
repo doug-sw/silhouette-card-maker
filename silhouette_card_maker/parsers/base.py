@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import List
-from silhouette_card_maker.models import Card
+from silhouette_card_maker.models.card import Card
 
-class BaseDeckParser(ABC):
+class BaseParser(ABC):
     @abstractmethod
     def parse(self, deck_text: str) -> List[Card]:
         """

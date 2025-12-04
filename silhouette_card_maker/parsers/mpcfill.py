@@ -1,49 +1,56 @@
-
-
-# silhouette_card_maker/parsers/mpcfill.py
-
 from xml.etree import ElementTree as ET
-from pathlib import Path
-from typing import List
-from silhouette_card_maker.models import Card
-from silhouette_card_maker.parsers.base import BaseDeckParser
+from typing import Any, Dict, List
+from silhouette_card_maker.models.faces import NormalizedCardFace, FaceType
+from silhouette_card_maker.models.card import Card
+from silhouette_card_maker.models.collections import CardCollection
+from silhouette_card_maker.parsers.base import BaseParser
 
-class MPCFillParser(BaseDeckParser):
-    def parse(self, deck_text: str) -> List[Card]:
-        root = ET.fromstring(deck_text)
-        fronts = root.find("fronts")
-        if fronts is None:
-            raise ValueError("No fronts found in decklist")
+class MPCFillXMLParser(BaseParser):
+    """
+    Parse MPCFill XML into a CardCollection.
+    """
 
-        cards_data = {}
-        for front in fronts.findall("card"):
-            slots_text = front.find("slots").text or ""
-            slots = slots_text.split(",")
-            name_text = front.find("name").text or ""
-            card_id = front.find("id").text or ""
-            cards_data[slots[0]] = {
-                "name": ".".join(name_text.split(".")[:-1]) if "." in name_text else name_text,
-                "id_front": card_id,
-                "quantity": len(slots),
-            }
+    def parse(self, raw_data: str) -> CardCollection:
+        """
+        raw_data: MPCFill XML string
+        """
+        root = ET.fromstring(raw_data)
+        collection = CardCollection()
 
-        backs = root.find("backs") or []
-        for back in backs:
-            slot_text = back.find("slots").text or ""
-            slot = slot_text.split(",")[0] if slot_text else None
-            if slot and slot in cards_data:
-                card_back_id = back.find("id").text or None
-                cards_data[slot]["id_back"] = card_back_id
+        front_nodes = root.findall(".//fronts/card")
+        back_nodes = root.findall(".//backs/card")
 
-        cards = []
-        for index, card_data in enumerate(cards_data.values(), start=1):
-            card = Card(
-                name=card_data["name"],
-                index=index,
-                id_front=card_data["id_front"],
-                id_back=card_data.get("id_back"),
-                quantity=card_data["quantity"],
-            )
-            cards.append(card)
+        fronts = [self._parse_face_node(node, FaceType.FRONT) for node in front_nodes]
+        backs = [self._parse_face_node(node, FaceType.BACK) for node in back_nodes]
 
-        return cards
+        slot_map: Dict[int, Card] = {}
+
+        for face in fronts:
+            for slot in face.data.slots:
+                if slot not in slot_map:
+                    slot_map[slot] = Card()
+                slot_map[slot].add_face(face)
+
+        for face in backs:
+            for slot in face.data.slots:
+                if slot not in slot_map:
+                    slot_map[slot] = Card()
+                slot_map[slot].add_face(face)
+
+        for slot in sorted(slot_map.keys()):
+            collection.add_card(slot_map[slot])
+
+        return collection
+
+    def _parse_face_node(self, node: ET.Element, face_type: FaceType) -> NormalizedCardFace:
+        """
+        Convert an XML <card> node into a NormalizedCardFace.
+        """
+        data = {
+            "name": node.findtext("name"),
+            "id": node.findtext("id"),
+            "slots": [int(s.strip()) for s in node.findtext("slots").split(",")],
+            "query": node.findtext("query"),
+        }
+
+        return NormalizedCardFace(face_type=face_type, data=data)
