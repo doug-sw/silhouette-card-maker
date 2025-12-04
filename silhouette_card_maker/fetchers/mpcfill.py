@@ -26,7 +26,6 @@ class MPCFillFetcher(BaseFetcher):
     EXEC_PATH: str = "exec?id="
 
     def download_face(self, face: NormalizedCardFace, stem: str, output_dir: Path) -> Path:
-        print(f'downloading {face}')
         """
         Download a single card face or use a cached file if already exists.
         Returns the full path to the downloaded file (with extension).
