@@ -2,6 +2,7 @@ from enum import Enum
 import itertools
 import json
 import math
+import numpy as np
 import os
 import re
 from glob import glob
@@ -173,44 +174,13 @@ def get_back_card_image_path(back_dir_path) -> str | None:
 
     return os.path.join(back_dir_path, files[index])
 
-def draw_card_with_bleed(card_image: Image, base_image: Image, box: tuple[int, int, int, int], print_bleed: tuple[int, int]):
+def draw_card_with_bleed(card_image: Image.Image, base_image: Image.Image, box: tuple[int, int, int, int], print_bleed: tuple[int, int]):
     origin_x, origin_y, _, _ = box
-
-    x_bleed = print_bleed[0]
-    y_bleed = print_bleed[1]
-
-    width, height = card_image.size
-    base_image.paste(card_image, (origin_x, origin_y))
-
-    class Axis(int, Enum):
-        X = 0
-        Y = 1
-
-    def extend_edge(crop_box: tuple[int, int, int, int], start: tuple[int, int], bleed: int, axis: Axis):
-        for bleed_i in range(bleed):
-            pos = (
-                start[0] + (bleed_i if axis == Axis.X else 0),
-                start[1] + (bleed_i if axis == Axis.Y else 0)
-            )
-
-            base_image.paste(card_image.crop(crop_box), pos)
-
-    # Extend the edges of the cards to create print bleed
-    # Top and bottom
-    extend_edge((0, 0, width, 1), (origin_x, origin_y - y_bleed), y_bleed, Axis.Y)
-    extend_edge((0, height - 1, width, height), (origin_x, origin_y + height), y_bleed, Axis.Y)
-
-    # Left and right
-    extend_edge((0, 0, 1, height), (origin_x - x_bleed, origin_y), x_bleed, Axis.X)
-    extend_edge((width - 1, 0, width, height), (origin_x + width, origin_y), x_bleed, Axis.X)
-
-    # Corners
-    for x_bleed, crop_x, pos_x in [(x_bleed, 0, origin_x - x_bleed), (x_bleed, width - 1, origin_x + width)]:
-        for y_bleed, crop_y, pos_y in [(y_bleed, 0, origin_y - y_bleed), (y_bleed, height - 1, origin_y + height)]:
-            for x_bleed_i in range(x_bleed):
-                for y_bleed_i in range(y_bleed):
-                    base_image.paste(card_image.crop((crop_x, crop_y, crop_x + 1, crop_y + 1)), (pos_x + x_bleed_i, pos_y + y_bleed_i))
-
+    x_bleed, y_bleed = print_bleed
+    arr = np.array(card_image)
+    padded_arr = np.pad(arr, ((x_bleed, x_bleed), (y_bleed, y_bleed), (0, 0)), mode='edge')
+    image_with_bleed = Image.fromarray(padded_arr)
+    base_image.paste(image_with_bleed, (origin_x - x_bleed, origin_y - y_bleed))
     return base_image
 
 def draw_card_layout(
