@@ -12,19 +12,22 @@ default_output_pdf_path = os.path.join(output_directory, 'game.pdf')
 @click.option("--output_pdf_path", help="The desired path of the offset PDF.")
 @click.option("-x", "--x_offset", type=int, help="The desired offset in the x-axis.")
 @click.option("-y", "--y_offset", type=int, help="The desired offset in the y-axis.")
-@click.option("-s", "--save", default=False, is_flag=True, help="Save the x and y offset values.")
+@click.option("-r", "--rotation_deg", type=float, help="Rotation (degrees) to apply to back pages around center.")
+@click.option("-s", "--save", default=False, is_flag=True, help="Save the x, y, and rotation values.")
 @click.option("--ppi", default=300, type=click.IntRange(min=0), show_default=True, help="Pixels per inch (PPI) when creating PDF.")
 
-def offset_pdf(pdf_path, output_pdf_path, x_offset, y_offset, save, ppi):
+def offset_pdf(pdf_path, output_pdf_path, x_offset, y_offset, rotation_deg, save, ppi):
     new_x_offset = 0
     new_y_offset = 0
+    new_rotation_deg = 0.0
 
     saved_offset = load_saved_offset()
     if saved_offset is not None:
         new_x_offset = saved_offset.x_offset
         new_y_offset = saved_offset.y_offset
 
-        print(f'Loaded x offset: {new_x_offset}, y offset: {new_y_offset}')
+        new_rotation_deg = saved_offset.rotation_deg
+        print(f'Loaded x offset: {new_x_offset}, y offset: {new_y_offset}, rotation: {new_rotation_deg}°')
 
     # Check for new offset values
     if x_offset is not None:
@@ -33,11 +36,14 @@ def offset_pdf(pdf_path, output_pdf_path, x_offset, y_offset, save, ppi):
     if y_offset is not None:
         new_y_offset = y_offset
 
-    print(f'Using x offset: {new_x_offset}, y offset: {new_y_offset}')
+    if rotation_deg is not None:
+        new_rotation_deg = rotation_deg
+
+    print(f'Using x offset: {new_x_offset}, y offset: {new_y_offset}, rotation: {new_rotation_deg}°')
 
     # Save new offset
     if save:
-        save_offset(new_x_offset, new_y_offset)
+        save_offset(new_x_offset, new_y_offset, new_rotation_deg)
         print(f'Saved offset')
 
     try:
@@ -51,7 +57,7 @@ def offset_pdf(pdf_path, output_pdf_path, x_offset, y_offset, save, ppi):
             raw_images.append(page.render(ppi/72).to_pil())
 
         # Offset images
-        final_images = offset_images(raw_images, new_x_offset, new_y_offset, ppi)
+        final_images = offset_images(raw_images, new_x_offset, new_y_offset, ppi, new_rotation_deg)
 
         # The default for output_pdf_path is the original path but with _offset.py appended to the end.
         if output_pdf_path is None:

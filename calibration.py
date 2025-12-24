@@ -86,6 +86,41 @@ for paper_size in PaperSize:
                 
                 back_draw.text((back_element_x + test_half_size, back_element_y + test_half_size + 30), f'({x_index - matrix_half_size_x}, {y_index - matrix_half_size_y})', fill="red", anchor="mm", font=coord_font)
 
+        # Add rotational calibration markers at extreme centerlines
+        center_x = math.floor(print_width / 2)
+        center_y = math.floor(print_height / 2)
+
+        marker_r = 14
+        def draw_marker(draw: ImageDraw.ImageDraw, x: int, y: int, label: str):
+            draw.ellipse([(x - marker_r, y - marker_r), (x + marker_r, y + marker_r)], outline=(255, 0, 0), width=3)
+            draw.text((x, y - marker_r - 20), label, fill=(0, 0, 0), anchor="ma", font=coord_font)
+
+        # Front markers
+        draw_marker(front_draw, center_x, 60, "TOP")
+        draw_marker(front_draw, center_x, print_height - 60, "BOTTOM")
+        draw_marker(front_draw, 60, center_y, "LEFT")
+        draw_marker(front_draw, print_width - 60, center_y, "RIGHT")
+
+        # Back markers (same positions; measure misalignment after print)
+        draw_marker(back_draw, center_x, 60, "TOP")
+        draw_marker(back_draw, center_x, print_height - 60, "BOTTOM")
+        draw_marker(back_draw, 60, center_y, "LEFT")
+        draw_marker(back_draw, print_width - 60, center_y, "RIGHT")
+
+        # Instruction overlay on back page for rotation estimation
+        height_mm = round(print_height / 300 * 25.4, 2)
+        width_mm = round(print_width / 300 * 25.4, 2)
+        instruction = (
+            f"Rotation calibration: measure horizontal offset (mm) at TOP and BOTTOM along the vertical centerline. "
+            f"Angle ≈ (Δx_bottom − Δx_top) / H (radians), H={height_mm}mm. Degrees ≈ above × 57.2958. "
+            f"Similarly, measure vertical offset at LEFT and RIGHT; Angle ≈ (Δy_right − Δy_left) / W, W={width_mm}mm."
+        )
+        back_draw.text((center_x, print_height - 100), instruction, fill=(0, 0, 0), anchor="ma", font=coord_font)
+
         card_list = [front_image, back_image]
         pdf_path = os.path.join("calibration", f"{paper_size.value}_calibration.pdf")
         card_list[0].save(pdf_path, save_all=True, append_images=card_list[1:], resolution=300, speed=0, subsampling=0, quality=100)
+
+        # Also emit a dedicated rotation calibration PDF
+        rot_pdf_path = os.path.join("calibration", f"{paper_size.value}_rotation_calibration.pdf")
+        card_list[0].save(rot_pdf_path, save_all=True, append_images=card_list[1:], resolution=300, speed=0, subsampling=0, quality=100)

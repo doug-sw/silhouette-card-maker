@@ -634,8 +634,8 @@ def generate_pdf(
                 if saved_offset is None:
                     print('Offset cannot be applied')
                 else:
-                    print(f'Loaded x offset: {saved_offset.x_offset}, y offset: {saved_offset.y_offset}')
-                    pages = offset_images(pages, saved_offset.x_offset, saved_offset.y_offset, ppi)
+                    print(f'Loaded x offset: {saved_offset.x_offset}, y offset: {saved_offset.y_offset}, rotation: {saved_offset.rotation_deg}°')
+                    pages = offset_images(pages, saved_offset.x_offset, saved_offset.y_offset, ppi, saved_offset.rotation_deg)
 
             # Save the pages array as a PDF
             if output_images:
@@ -651,14 +651,27 @@ def generate_pdf(
 class OffsetData(BaseModel):
     x_offset: int
     y_offset: int
+    rotation_deg: float = 0.0
 
-def save_offset(x_offset, y_offset) -> None:
+def save_offset(x_offset, y_offset, rotation_deg: float | None = None) -> None:
     # Create the directory if it doesn't exist
     os.makedirs('data', exist_ok=True)
 
+    # Preserve previous rotation if not provided
+    prev_rotation = 0.0
+    if os.path.exists('data/offset_data.json'):
+        try:
+            with open('data/offset_data.json', 'r') as prev_file:
+                data = json.load(prev_file)
+                prev_rotation = float(data.get('rotation_deg', 0.0))
+        except Exception:
+            prev_rotation = 0.0
+
+    rot = prev_rotation if rotation_deg is None else rotation_deg
+
     # Save the offset data to a JSON file
     with open('data/offset_data.json', 'w') as offset_file:
-        offset_file.write(OffsetData(x_offset=x_offset, y_offset=y_offset).model_dump_json(indent=4))
+        offset_file.write(OffsetData(x_offset=x_offset, y_offset=y_offset, rotation_deg=rot).model_dump_json(indent=4))
 
     print('Offset data saved!')
 
@@ -677,19 +690,30 @@ def load_saved_offset() -> OffsetData:
 
     return None
 
-def offset_images(images: List[Image.Image], x_offset: int, y_offset: int, ppi: int) -> List[Image.Image]:
-    offset_images = []
+def offset_images(images: List[Image.Image], x_offset: int, y_offset: int, ppi: int, rotation_deg: float = 0.0) -> List[Image.Image]:
+    result_images = []
 
-    add_offset = False
-    for image in images:
-        if add_offset:
-            offset_images.append(ImageChops.offset(image, math.floor(x_offset * ppi / 300), math.floor(y_offset * ppi / 300)))
+    apply_to_back = False
+    for img in images:
+        if apply_to_back:
+            # Apply rotation around center, then translation
+            if abs(rotation_deg) > 1e-6:
+                # Rotate with expand=True, then center-crop back to original size
+                rotated = img.rotate(rotation_deg, resample=Image.Resampling.BICUBIC, expand=True)
+                rw, rh = rotated.size
+                iw, ih = img.size
+                left = max(0, (rw - iw) // 2)
+                top = max(0, (rh - ih) // 2)
+                img = rotated.crop((left, top, left + iw, top + ih))
+
+            translated = ImageChops.offset(img, math.floor(x_offset * ppi / 300), math.floor(y_offset * ppi / 300))
+            result_images.append(translated)
         else:
-            offset_images.append(image)
+            result_images.append(img)
 
-        add_offset = not add_offset
+        apply_to_back = not apply_to_back
 
-    return offset_images
+    return result_images
 
 def calculate_max_print_bleed(x_pos: List[int], y_pos: List[int], width: int, height: int) -> tuple[int, int]:
     if len(x_pos) == 1 & len(y_pos) == 1:
