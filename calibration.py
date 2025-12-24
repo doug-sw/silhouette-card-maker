@@ -24,6 +24,7 @@ for paper_size in PaperSize:
             print_width = im.width
             print_height = im.height
             
+        # Grid calibration pages (front/back)
         front_image = im.copy()
         front_draw = ImageDraw.Draw(front_image)
         front_draw.text((print_width - 180, print_height - 180), 'front', fill=(0, 0, 0), anchor="ra", font=font)
@@ -31,6 +32,15 @@ for paper_size in PaperSize:
         back_image = im.copy()
         back_draw = ImageDraw.Draw(back_image)
         back_draw.text((print_width - 180, print_height - 180), 'back', fill=(0, 0, 0), anchor="ra", font=font)
+
+        # Rotation-only calibration pages (no grid)
+        rot_front_image = im.copy()
+        rot_front_draw = ImageDraw.Draw(rot_front_image)
+        rot_front_draw.text((print_width - 180, print_height - 180), 'front', fill=(0, 0, 0), anchor="ra", font=font)
+
+        rot_back_image = im.copy()
+        rot_back_draw = ImageDraw.Draw(rot_back_image)
+        rot_back_draw.text((print_width - 180, print_height - 180), 'back', fill=(0, 0, 0), anchor="ra", font=font)
 
         test_size = 25
         test_half_size = math.floor(test_size / 2)
@@ -86,7 +96,7 @@ for paper_size in PaperSize:
                 
                 back_draw.text((back_element_x + test_half_size, back_element_y + test_half_size + 30), f'({x_index - matrix_half_size_x}, {y_index - matrix_half_size_y})', fill="red", anchor="mm", font=coord_font)
 
-        # Add rotational calibration markers at extreme centerlines
+        # Build rotation-only page: origin and centerline markers only
         center_x = math.floor(print_width / 2)
         center_y = math.floor(print_height / 2)
 
@@ -95,19 +105,27 @@ for paper_size in PaperSize:
             draw.ellipse([(x - marker_r, y - marker_r), (x + marker_r, y + marker_r)], outline=(255, 0, 0), width=3)
             draw.text((x, y - marker_r - 20), label, fill=(0, 0, 0), anchor="ma", font=coord_font)
 
-        # Front markers
-        draw_marker(front_draw, center_x, 60, "TOP")
-        draw_marker(front_draw, center_x, print_height - 60, "BOTTOM")
-        draw_marker(front_draw, 60, center_y, "LEFT")
-        draw_marker(front_draw, print_width - 60, center_y, "RIGHT")
+        # Origin crosshair
+        def draw_origin(draw: ImageDraw.ImageDraw):
+            draw.line([(center_x - 30, center_y), (center_x + 30, center_y)], fill=(0, 0, 0), width=3)
+            draw.line([(center_x, center_y - 30), (center_x, center_y + 30)], fill=(0, 0, 0), width=3)
+            draw.text((center_x, center_y - 40), "ORIGIN", fill=(0, 0, 0), anchor="ma", font=coord_font)
 
-        # Back markers (same positions; measure misalignment after print)
-        draw_marker(back_draw, center_x, 60, "TOP")
-        draw_marker(back_draw, center_x, print_height - 60, "BOTTOM")
-        draw_marker(back_draw, 60, center_y, "LEFT")
-        draw_marker(back_draw, print_width - 60, center_y, "RIGHT")
+        # Front rotation markers
+        draw_origin(rot_front_draw)
+        draw_marker(rot_front_draw, center_x, 60, "TOP")
+        draw_marker(rot_front_draw, center_x, print_height - 60, "BOTTOM")
+        draw_marker(rot_front_draw, 60, center_y, "LEFT")
+        draw_marker(rot_front_draw, print_width - 60, center_y, "RIGHT")
 
-        # Instruction overlay on back page for rotation estimation
+        # Back rotation markers
+        draw_origin(rot_back_draw)
+        draw_marker(rot_back_draw, center_x, 60, "TOP")
+        draw_marker(rot_back_draw, center_x, print_height - 60, "BOTTOM")
+        draw_marker(rot_back_draw, 60, center_y, "LEFT")
+        draw_marker(rot_back_draw, print_width - 60, center_y, "RIGHT")
+
+        # Instruction overlay on rotation back page
         height_mm = round(print_height / 300 * 25.4, 2)
         width_mm = round(print_width / 300 * 25.4, 2)
         instruction = (
@@ -115,12 +133,13 @@ for paper_size in PaperSize:
             f"Angle ≈ (Δx_bottom − Δx_top) / H (radians), H={height_mm}mm. Degrees ≈ above × 57.2958. "
             f"Similarly, measure vertical offset at LEFT and RIGHT; Angle ≈ (Δy_right − Δy_left) / W, W={width_mm}mm."
         )
-        back_draw.text((center_x, print_height - 100), instruction, fill=(0, 0, 0), anchor="ma", font=coord_font)
+        rot_back_draw.text((center_x, print_height - 100), instruction, fill=(0, 0, 0), anchor="ma", font=coord_font)
 
         card_list = [front_image, back_image]
         pdf_path = os.path.join("calibration", f"{paper_size.value}_calibration.pdf")
         card_list[0].save(pdf_path, save_all=True, append_images=card_list[1:], resolution=300, speed=0, subsampling=0, quality=100)
 
-        # Also emit a dedicated rotation calibration PDF
+        # Emit a dedicated rotation calibration PDF with no grid
+        rot_card_list = [rot_front_image, rot_back_image]
         rot_pdf_path = os.path.join("calibration", f"{paper_size.value}_rotation_calibration.pdf")
-        card_list[0].save(rot_pdf_path, save_all=True, append_images=card_list[1:], resolution=300, speed=0, subsampling=0, quality=100)
+        rot_card_list[0].save(rot_pdf_path, save_all=True, append_images=rot_card_list[1:], resolution=300, speed=0, subsampling=0, quality=100)
